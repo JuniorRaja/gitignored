@@ -1,0 +1,84 @@
+{
+  "name": "gitignored",
+  "displayName": ".gitignored",
+  "description": "Toggle visibility of .gitignore'd files in the Explorer Tab",
+  "version": "1.0.0",
+  "publisher": "juniorraja",
+  "icon": "resources/logo.png",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["workspaceContains:.gitignore"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitignoreToggle.hide",
+        "title": "Hide .gitignore'd Files",
+        "icon": {
+          "light": "resources/icon-light.svg",
+          "dark":  "resources/icon-dark.svg"
+        }
+      },
+      {
+        "command": "gitignoreToggle.show",
+        "title": "Show .gitignore'd Files",
+        "icon": {
+          "light": "resources/icon-hidden-light.svg",
+          "dark":  "resources/icon-hidden-dark.svg"
+        }
+      },
+      {
+        "command": "gitignoreToggle.toggle",
+        "title": "Toggle .gitignore'd Files"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "gitignoreToggle.hide",
+          "when": "view == workbench.explorer.fileView && !gitignoreToggle.hidden",
+          "group": "navigation"
+        },
+        {
+          "command": "gitignoreToggle.show",
+          "when": "view == workbench.explorer.fileView && gitignoreToggle.hidden",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        { "command": "gitignoreToggle.hide",   "when": "false" },
+        { "command": "gitignoreToggle.show",   "when": "false" }
+      ]
+    },
+    "configuration": {
+      "title": "Ignore .gitignore",
+      "properties": {
+        "gitignoreToggle.hidden": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether .gitignore'd files are currently hidden in Explorer"
+        }
+      }
+    }
+  },
+  "keywords": ["gitignore", "explorer", "toggle", "exclude", "files", "gitignore"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juniorraja/gitignored"
+  },
+  "bugs": {
+    "url": "https://github.com/juniorraja/gitignored/issues"
+  },
+  "homepage": "https://github.com/juniorraja/gitignored#readme",
+  "license": "MIT",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
