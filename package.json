@@ -1,10 +1,14 @@
 {
-  "name": "gitignored",
-  "displayName": ".gitignored",
+  "name": "git-ignored",
+  "displayName": ".gitignored - Toggle .gitignore'd Files",
   "description": "Toggle visibility of .gitignore'd files in the Explorer Tab",
   "version": "1.0.0",
-  "publisher": "juniorraja",
+  "publisher": "PR-Labs",
   "icon": "resources/logo.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
   "activationEvents": ["workspaceContains:.gitignore"],
@@ -61,7 +65,7 @@
       }
     }
   },
-  "keywords": ["gitignore", "explorer", "toggle", "exclude", "files", "gitignore"],
+  "keywords": ["gitignore", "explorer", "toggle", "exclude", "files", "hide"],
   "repository": {
     "type": "git",
     "url": "https://github.com/juniorraja/gitignored"
