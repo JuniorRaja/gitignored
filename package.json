@@ -3,7 +3,7 @@
   "displayName": ".gitignored - Toggle .gitignore'd Files",
   "description": "Toggle visibility of .gitignore'd files in the Explorer Tab",
   "version": "1.0.0",
-  "publisher": "PR-Labs",
+  "publisher": "PRLabs",
   "icon": "resources/logo.png",
   "galleryBanner": {
     "color": "#1e1e1e",
