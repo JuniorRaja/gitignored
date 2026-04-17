@@ -9,9 +9,16 @@
     "color": "#1e1e1e",
     "theme": "dark"
   },
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
-  "activationEvents": ["workspaceContains:.gitignore"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:.gitignore",
+    "onLanguage:ignore"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -20,7 +27,7 @@
         "title": "Hide .gitignore'd Files",
         "icon": {
           "light": "resources/icon-light.svg",
-          "dark":  "resources/icon-dark.svg"
+          "dark": "resources/icon-dark.svg"
         }
       },
       {
@@ -28,7 +35,7 @@
         "title": "Show .gitignore'd Files",
         "icon": {
           "light": "resources/icon-hidden-light.svg",
-          "dark":  "resources/icon-hidden-dark.svg"
+          "dark": "resources/icon-hidden-dark.svg"
         }
       },
       {
@@ -50,8 +57,14 @@
         }
       ],
       "commandPalette": [
-        { "command": "gitignoreToggle.hide",   "when": "false" },
-        { "command": "gitignoreToggle.show",   "when": "false" }
+        {
+          "command": "gitignoreToggle.hide",
+          "when": "false"
+        },
+        {
+          "command": "gitignoreToggle.show",
+          "when": "false"
+        }
       ]
     },
     "configuration": {
@@ -65,7 +78,14 @@
       }
     }
   },
-  "keywords": ["gitignore", "explorer", "toggle", "exclude", "files", "hide"],
+  "keywords": [
+    "gitignore",
+    "explorer",
+    "toggle",
+    "exclude",
+    "files",
+    "hide"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/juniorraja/gitignored"
@@ -81,8 +101,9 @@
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.0",
     "typescript": "^5.3.0"
   }
 }

@@ -6,6 +6,15 @@ import * as path from 'path';
 // files.exclude, so they can be removed cleanly on toggle-off or startup.
 const STORAGE_KEY = 'gitignoreToggle.excludedGlobs';
 
+const gitignoreLineDecoration = vscode.window.createTextEditorDecorationType({
+  after: {
+    color: new vscode.ThemeColor('editorCodeLens.foreground'),
+    fontStyle: 'italic',
+    margin: '0 0 0 3em',
+  },
+  isWholeLine: true,
+});
+
 // ---------------------------------------------------------------------------
 // .gitignore parser
 // ---------------------------------------------------------------------------
@@ -36,6 +45,200 @@ function parseGitignore(root: string): string[] {
       if (!l.includes('/')) { return `**/${l}`; }   // *.log  → **/*.log
       return l;
     });
+}
+
+function describeGitignorePattern(line: string): string {
+  const raw = line.trim();
+  if (!raw || raw.startsWith('#')) { return ''; }
+
+  const isNegation = raw.startsWith('!');
+  const original = isNegation ? raw.slice(1) : raw;
+  const anchored = original.startsWith('/');
+  const directoryOnly = original.endsWith('/');
+  const body = original.replace(/^\//, '').replace(/\/$/, '');
+  const isGlob = /[*?\[]/.test(body);
+  const hasSlash = body.includes('/');
+
+  const sentences: string[] = [];
+  if (isNegation) {
+    sentences.push(`Negation: re-includes \`${body}\` even if a previous rule excluded it.`);
+  }
+
+  if (directoryOnly) {
+    if (!body) {
+      sentences.push('Directory-only pattern that applies to the repository root.');
+    } else if (anchored) {
+      sentences.push(`Matches the directory \`${body}\` at the repository root and all files inside it.`);
+    } else if (hasSlash) {
+      sentences.push(`Matches directories named like \`${body}\` at any depth and their contents.`);
+    } else {
+      sentences.push(`Matches directories named \`${body}\` at any depth and all files under them.`);
+    }
+  } else {
+    if (!hasSlash) {
+      if (isGlob) {
+        sentences.push(`Matches filenames like \`${body}\` anywhere in the repository.`);
+      } else if (anchored) {
+        sentences.push(`Matches the file or directory \`${body}\` only at the repository root.`);
+      } else {
+        sentences.push(`Matches any file or directory named \`${body}\` anywhere in the repository.`);
+      }
+    } else {
+      if (anchored) {
+        sentences.push(`Matches paths under the repository root like \`${body}\`.`);
+      } else {
+        sentences.push(`Matches paths like \`${body}\` at any depth inside the repository.`);
+      }
+    }
+  }
+
+  const details: string[] = [];
+  if (anchored) {
+    details.push('Root-anchored: only matches paths from the repository root.');
+  }
+  if (directoryOnly) {
+    details.push('Directory-only: applies to folders and their contents.');
+  }
+  if (body.includes('**')) {
+    details.push('`**` matches across directory boundaries at any depth.');
+  }
+  if (body.includes('*') && !body.includes('**')) {
+    details.push('`*` matches any string except path separators.');
+  }
+  if (body.includes('?')) {
+    details.push('`?` matches exactly one character.');
+  }
+  if (body.includes('[')) {
+    details.push('Character classes like `[abc]` match any one of the listed characters.');
+  }
+
+  return sentences.join(' ') + (details.length ? '\n\n' + details.map(d => `- ${d}`).join('\n') : '');
+}
+
+function patternLineToSearchGlobs(line: string): string[] {
+  const raw = line.trim();
+  if (!raw || raw.startsWith('#')) { return []; }
+
+  const isNegation = raw.startsWith('!');
+  let pattern = isNegation ? raw.slice(1) : raw;
+  const anchored = pattern.startsWith('/');
+  const directoryOnly = pattern.endsWith('/');
+  pattern = pattern.replace(/^\//, '').replace(/\/$/, '');
+  if (!pattern) { return ['**/*']; }
+
+  const hasGlob = /[*?\[]/.test(pattern);
+  const globs: string[] = [];
+
+  if (directoryOnly) {
+    if (anchored) {
+      globs.push(`${pattern}/**`);
+    } else {
+      globs.push(`**/${pattern}/**`);
+    }
+    return globs;
+  }
+
+  if (!hasGlob && !pattern.includes('/')) {
+    if (anchored) {
+      globs.push(pattern);
+      globs.push(`${pattern}/**`);
+    } else {
+      globs.push(`**/${pattern}`);
+    }
+    return globs;
+  }
+
+  if (anchored) {
+    globs.push(pattern);
+  } else {
+    globs.push(`**/${pattern}`);
+  }
+
+  return globs;
+}
+
+async function resolvePatternMatches(line: string, limit = 1000): Promise<string[]> {
+  const globs = patternLineToSearchGlobs(line);
+  if (globs.length === 0) { return []; }
+
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders) { return []; }
+
+  const found = new Set<string>();
+  for (const folder of folders) {
+    for (const glob of globs) {
+      const relative = new vscode.RelativePattern(folder, glob);
+      const matches = await vscode.workspace.findFiles(relative, undefined, limit - found.size + 1);
+      for (const uri of matches) {
+        found.add(vscode.workspace.asRelativePath(uri, false));
+        if (found.size >= limit) { break; }
+      }
+      if (found.size >= limit) { break; }
+    }
+    if (found.size >= limit) { break; }
+  }
+
+  return [...found];
+}
+
+async function countPatternMatches(line: string): Promise<number> {
+  return (await resolvePatternMatches(line, 1000)).length;
+}
+
+async function updateGitignoreDecorations(editor: vscode.TextEditor): Promise<void> {
+  const document = editor.document;
+  if (document.languageId !== 'ignore') { return; }
+
+  const countCache = new Map<string, number>();
+  const decorations: vscode.DecorationOptions[] = [];
+
+  for (let i = 0; i < document.lineCount; i++) {
+    const line = document.lineAt(i);
+    const text = line.text.trim();
+    if (!text || text.startsWith('#')) { continue; }
+
+    let matchCount = countCache.get(text);
+    if (matchCount === undefined) {
+      matchCount = await countPatternMatches(text);
+      countCache.set(text, matchCount);
+    }
+
+    const label = matchCount === 0
+      ? '⟵ ⚠ no matches'
+      : `⟵ ${matchCount === 1000 ? '1000+' : matchCount} file${matchCount === 1 ? '' : 's'}`;
+
+    decorations.push({
+      range: line.range,
+      renderOptions: {
+        after: {
+          contentText: label,
+        }
+      }
+    });
+  }
+
+  editor.setDecorations(gitignoreLineDecoration, decorations);
+}
+
+async function createGitignoreHover(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Hover | null> {
+  const lineText = document.lineAt(position.line).text.trim();
+  if (!lineText || lineText.startsWith('#')) { return null; }
+
+  const description = describeGitignorePattern(lineText);
+  if (!description) { return null; }
+
+  const matchCount = await countPatternMatches(lineText);
+  const countText = matchCount === 0
+    ? 'No matching files found.'
+    : `${matchCount === 1000 ? '1000+' : matchCount} file${matchCount === 1 ? '' : 's'} match this pattern.`;
+
+  const contents = new vscode.MarkdownString();
+  contents.appendMarkdown(`**Pattern:** \`${lineText}\``);
+  contents.appendMarkdown(`\n\n${description}`);
+  contents.appendMarkdown(`\n\n**Workspace match count:** ${countText}`);
+  contents.isTrusted = false;
+
+  return new vscode.Hover(contents, document.lineAt(position.line).range);
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +365,14 @@ export function activate(context: vscode.ExtensionContext) {
   const currentlyHidden = isHidden();
   vscode.commands.executeCommand('setContext', 'gitignoreToggle.hidden', currentlyHidden);
 
+  // --- .gitignore hover help -------------------------------------------
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider({ language: 'ignore', scheme: 'file' }, {
+      provideHover: (document, position) => createGitignoreHover(document, position)
+    })
+  );
+  context.subscriptions.push(gitignoreLineDecoration);
+
   // --- Status bar -------------------------------------------------------
   // Provides a persistent, always-visible indicator of the current state.
   // Yellow background when hidden so it catches attention without an extra panel.
@@ -205,6 +416,28 @@ export function activate(context: vscode.ExtensionContext) {
       const next = !isHidden();
       await setHidden(next, context);
       updateStatusBar(next);
+    })
+  );
+
+  const scheduleUpdate = (() => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    return (editor: vscode.TextEditor | undefined) => {
+      if (!editor || editor.document.languageId !== 'ignore') { return; }
+      if (timeout) { clearTimeout(timeout); }
+      timeout = setTimeout(() => updateGitignoreDecorations(editor), 250);
+    };
+  })();
+
+  if (vscode.window.activeTextEditor) {
+    scheduleUpdate(vscode.window.activeTextEditor);
+  }
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(editor => scheduleUpdate(editor)),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      if (vscode.window.activeTextEditor?.document === event.document) {
+        scheduleUpdate(vscode.window.activeTextEditor);
+      }
     })
   );
 
