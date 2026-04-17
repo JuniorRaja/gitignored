@@ -37,6 +37,39 @@ If `.gitignore` is modified while files are hidden, the exclude list updates aut
 - Negation patterns (`!pattern`) in `.gitignore` are not supported — VS Code's `files.exclude` has no way to express them
 - Only reads the root `.gitignore`; nested `.gitignore` files in subdirectories are not picked up
 
+### Why .gitignored?
+ 
+- **One-click toggle** — a dedicated toolbar button right in the Explorer, no menu-diving needed.
+- **Status bar feedback** — always know the current state at a glance.
+- **Safe settings management** — injects and removes only its own globs; your existing `files.exclude` entries are never touched.
+- **Auto-updates** — change your `.gitignore` while files are hidden, and the exclude list refreshes automatically.
+- **Lightweight** — no dependencies, no configuration required, works out of the box.
+
+
+## Comparison with Alternatives
+ 
+There are several other approaches to managing gitignored file visibility in VS Code. Here's how `.gitignored` compares:
+
+### VS Code Built-in Setting (`explorer.excludeGitIgnore`)
+ 
+VS Code introduced the `explorer.excludeGitIgnore` setting in v1.68 (May 2022). It's a simple boolean toggle buried in settings — no toolbar button, no status bar, and no quick toggle from the command palette. Most of the extensions below (including `.gitignored`) exist because the built-in experience lacks convenient, one-click toggling.
+
+### Extension-by-Extension Comparison
+ 
+| Feature | **.gitignored** (this) | **Hide Gitignored** (npxms) | **Toggle Exclude Git Ignore** (earshinov) | **Explorer .gitignore Toggle** (timgthomas) | **Hide Git Ignored** (chrisbibby) | **GitIgnore Visual** (gdrenteria) |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Marketplace Installs** | 9 (new) | ~45,000 | ~360 | ~810 | — | new (Jan 2026) |
+| **Approach** | `files.exclude` injection | `files.exclude` injection | Toggles built-in `explorer.excludeGitIgnore` | Toggles built-in `explorer.excludeGitIgnore` | Toggles built-in `explorer.excludeGitIgnore` | Visual badges only (no hiding) |
+| **Explorer Toolbar Button** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Status Bar Indicator** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Command Palette** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Keyboard Shortcut** | — | — | ✅ (Ctrl+Alt+E) | — | — | — |
+| **Auto-refresh on `.gitignore` change** | ✅ | ❌ | N/A (built-in) | N/A (built-in) | N/A (built-in) | ✅ (manual refresh) |
+| **Preserves user `files.exclude`** | ✅ | ✅ | N/A | N/A | N/A | N/A |
+| **Scope** | Workspace | Workspace | Global (user settings) | Workspace | Workspace | Workspace |
+| **Shows _which_ rule matched** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (hover tooltip) |
+| **Actively Maintained** | ✅ | ⚠️ (limited) | ✅ | ⚠️ (minimal) | ⚠️ (minimal) | ✅ |
+
 ## Contributing
 
 Contributions are welcome! To get started:
