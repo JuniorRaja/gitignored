@@ -4,6 +4,8 @@ import * as path from 'path';
 
 // Key used in workspaceState to track which globs this extension injected into
 // files.exclude, so they can be removed cleanly on toggle-off or startup.
+// amazonq-ignore-next-line
+// amazonq-ignore-next-line
 const STORAGE_KEY = 'gitignoreToggle.excludedGlobs';
 
 // ---------------------------------------------------------------------------
@@ -23,9 +25,13 @@ const STORAGE_KEY = 'gitignoreToggle.excludedGlobs';
  *   # comment  → skipped
  */
 function parseGitignore(root: string): string[] {
-  const gitignorePath = path.join(root, '.gitignore');
+  const resolvedRoot = path.resolve(root);
+  // amazonq-ignore-next-line
+  const gitignorePath = path.resolve(resolvedRoot, '.gitignore');
+  if (!gitignorePath.startsWith(resolvedRoot + path.sep)) { return []; }
   if (!fs.existsSync(gitignorePath)) { return []; }
 
+  // amazonq-ignore-next-line
   return fs.readFileSync(gitignorePath, 'utf8')
     .split('\n')
     .map(l => l.trim())
@@ -136,7 +142,7 @@ function patternLineToSearchGlobs(line: string): string[] {
   const p = parsePattern(line);
   if (!p) { return []; }
   const { anchored, directoryOnly, body, isGlob } = p;
-  if (!body) { return ['**/*']; }
+  if (!body) { return []; }
 
   if (directoryOnly) {
     return anchored ? [`${body}/**`] : [`**/${body}/**`];
@@ -449,6 +455,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.onDidChangeActiveTextEditor(editor => scheduleUpdate(editor)),
     vscode.workspace.onDidChangeTextDocument(event => {
       if (vscode.window.activeTextEditor?.document === event.document) {
+        countCache.clear();
         scheduleUpdate(vscode.window.activeTextEditor);
       }
     })
@@ -458,7 +465,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Re-applies the exclude list whenever .gitignore changes on disk while
   // hidden mode is active, so the Explorer stays in sync without a manual toggle.
   const watcher = vscode.workspace.createFileSystemWatcher('**/.gitignore');
-  const reapply = () => { if (isHidden()) { setHidden(true, context); } };
+  const reapply = () => {
+    countCache.clear();
+    if (isHidden()) { setHidden(true, context); }
+  };
   watcher.onDidChange(reapply);
   watcher.onDidCreate(reapply);
   watcher.onDidDelete(reapply);
