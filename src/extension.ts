@@ -6,15 +6,6 @@ import * as path from 'path';
 // files.exclude, so they can be removed cleanly on toggle-off or startup.
 const STORAGE_KEY = 'gitignoreToggle.excludedGlobs';
 
-const gitignoreLineDecoration = vscode.window.createTextEditorDecorationType({
-  after: {
-    color: new vscode.ThemeColor('editorCodeLens.foreground'),
-    fontStyle: 'italic',
-    margin: '0 0 0 3em',
-  },
-  isWholeLine: true,
-});
-
 // ---------------------------------------------------------------------------
 // .gitignore parser
 // ---------------------------------------------------------------------------
@@ -47,17 +38,39 @@ function parseGitignore(root: string): string[] {
     });
 }
 
-function describeGitignorePattern(line: string): string {
-  const raw = line.trim();
-  if (!raw || raw.startsWith('#')) { return ''; }
+// ---------------------------------------------------------------------------
+// Pattern parser (shared)
+// ---------------------------------------------------------------------------
 
+interface ParsedPattern {
+  raw: string;
+  isNegation: boolean;
+  anchored: boolean;
+  directoryOnly: boolean;
+  body: string;
+  isGlob: boolean;
+  hasSlash: boolean;
+}
+
+function parsePattern(line: string): ParsedPattern | null {
+  const raw = line.trim();
+  if (!raw || raw.startsWith('#')) { return null; }
   const isNegation = raw.startsWith('!');
   const original = isNegation ? raw.slice(1) : raw;
   const anchored = original.startsWith('/');
   const directoryOnly = original.endsWith('/');
   const body = original.replace(/^\//, '').replace(/\/$/, '');
-  const isGlob = /[*?\[]/.test(body);
-  const hasSlash = body.includes('/');
+  return { raw, isNegation, anchored, directoryOnly, body, isGlob: /[*?\[]/.test(body), hasSlash: body.includes('/') };
+}
+
+// ---------------------------------------------------------------------------
+// Hover description
+// ---------------------------------------------------------------------------
+
+function describeGitignorePattern(line: string): string {
+  const p = parsePattern(line);
+  if (!p) { return ''; }
+  const { isNegation, anchored, directoryOnly, body, isGlob, hasSlash } = p;
 
   const sentences: string[] = [];
   if (isNegation) {
@@ -115,46 +128,25 @@ function describeGitignorePattern(line: string): string {
   return sentences.join(' ') + (details.length ? '\n\n' + details.map(d => `- ${d}`).join('\n') : '');
 }
 
+// ---------------------------------------------------------------------------
+// Glob builder
+// ---------------------------------------------------------------------------
+
 function patternLineToSearchGlobs(line: string): string[] {
-  const raw = line.trim();
-  if (!raw || raw.startsWith('#')) { return []; }
-
-  const isNegation = raw.startsWith('!');
-  let pattern = isNegation ? raw.slice(1) : raw;
-  const anchored = pattern.startsWith('/');
-  const directoryOnly = pattern.endsWith('/');
-  pattern = pattern.replace(/^\//, '').replace(/\/$/, '');
-  if (!pattern) { return ['**/*']; }
-
-  const hasGlob = /[*?\[]/.test(pattern);
-  const globs: string[] = [];
+  const p = parsePattern(line);
+  if (!p) { return []; }
+  const { anchored, directoryOnly, body, isGlob } = p;
+  if (!body) { return ['**/*']; }
 
   if (directoryOnly) {
-    if (anchored) {
-      globs.push(`${pattern}/**`);
-    } else {
-      globs.push(`**/${pattern}/**`);
-    }
-    return globs;
+    return anchored ? [`${body}/**`] : [`**/${body}/**`];
   }
 
-  if (!hasGlob && !pattern.includes('/')) {
-    if (anchored) {
-      globs.push(pattern);
-      globs.push(`${pattern}/**`);
-    } else {
-      globs.push(`**/${pattern}`);
-    }
-    return globs;
+  if (!isGlob && !body.includes('/')) {
+    return anchored ? [body, `${body}/**`] : [`**/${body}`];
   }
 
-  if (anchored) {
-    globs.push(pattern);
-  } else {
-    globs.push(`**/${pattern}`);
-  }
-
-  return globs;
+  return anchored ? [body] : [`**/${body}`];
 }
 
 async function resolvePatternMatches(line: string, limit = 1000): Promise<string[]> {
@@ -181,43 +173,56 @@ async function resolvePatternMatches(line: string, limit = 1000): Promise<string
   return [...found];
 }
 
+// Module-level cache: survives editor tab switches, invalidated on document change.
+const countCache = new Map<string, number>();
+
 async function countPatternMatches(line: string): Promise<number> {
-  return (await resolvePatternMatches(line, 1000)).length;
+  const cached = countCache.get(line);
+  if (cached !== undefined) { return cached; }
+  const count = (await resolvePatternMatches(line, 1000)).length;
+  countCache.set(line, count);
+  return count;
 }
 
-async function updateGitignoreDecorations(editor: vscode.TextEditor): Promise<void> {
+function makeDecoration(lineRange: vscode.Range, label: string): vscode.DecorationOptions {
+  return { range: lineRange, renderOptions: { after: { contentText: label } } };
+}
+
+async function updateGitignoreDecorations(
+  editor: vscode.TextEditor,
+  decoration: vscode.TextEditorDecorationType
+): Promise<void> {
   const document = editor.document;
   if (document.languageId !== 'ignore') { return; }
 
-  const countCache = new Map<string, number>();
-  const decorations: vscode.DecorationOptions[] = [];
-
+  // Collect all pattern lines upfront.
+  const patternLines: { index: number; text: string; range: vscode.Range }[] = [];
   for (let i = 0; i < document.lineCount; i++) {
     const line = document.lineAt(i);
     const text = line.text.trim();
     if (!text || text.startsWith('#')) { continue; }
-
-    let matchCount = countCache.get(text);
-    if (matchCount === undefined) {
-      matchCount = await countPatternMatches(text);
-      countCache.set(text, matchCount);
-    }
-
-    const label = matchCount === 0
-      ? '⟵ ⚠ no matches'
-      : `⟵ ${matchCount === 1000 ? '1000+' : matchCount} file${matchCount === 1 ? '' : 's'}`;
-
-    decorations.push({
-      range: line.range,
-      renderOptions: {
-        after: {
-          contentText: label,
-        }
-      }
-    });
+    patternLines.push({ index: i, text, range: line.range });
   }
 
-  editor.setDecorations(gitignoreLineDecoration, decorations);
+  // Render placeholders immediately so the editor feels responsive.
+  editor.setDecorations(
+    decoration,
+    patternLines.map(l => makeDecoration(l.range, '⟵ counting…'))
+  );
+
+  // Resolve counts one-by-one and update decorations incrementally.
+  // Keeps memory flat: only one findFiles result in flight at a time.
+  const resolved = new Map<number, string>();
+  for (const { index, text, range } of patternLines) {
+    const count = await countPatternMatches(text);
+    const label = count === 0 ? '⟵ ⚠ no matches' : `⟵ ${count === 1000 ? '1000+' : count} file${count === 1 ? '' : 's'}`;
+    resolved.set(index, label);
+
+    editor.setDecorations(
+      decoration,
+      patternLines.map(l => makeDecoration(l.range, resolved.get(l.index) ?? '⟵ counting…'))
+    );
+  }
 }
 
 async function createGitignoreHover(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Hover | null> {
@@ -365,13 +370,21 @@ export function activate(context: vscode.ExtensionContext) {
   const currentlyHidden = isHidden();
   vscode.commands.executeCommand('setContext', 'gitignoreToggle.hidden', currentlyHidden);
 
-  // --- .gitignore hover help -------------------------------------------
+  // --- .gitignore hover + decorations ----------------------------------
+  const gitignoreLineDecoration = vscode.window.createTextEditorDecorationType({
+    after: {
+      color: new vscode.ThemeColor('editorCodeLens.foreground'),
+      fontStyle: 'italic',
+      margin: '0 0 0 3em',
+    },
+    isWholeLine: true,
+  });
   context.subscriptions.push(
+    gitignoreLineDecoration,
     vscode.languages.registerHoverProvider({ language: 'ignore', scheme: 'file' }, {
       provideHover: (document, position) => createGitignoreHover(document, position)
     })
   );
-  context.subscriptions.push(gitignoreLineDecoration);
 
   // --- Status bar -------------------------------------------------------
   // Provides a persistent, always-visible indicator of the current state.
@@ -424,7 +437,7 @@ export function activate(context: vscode.ExtensionContext) {
     return (editor: vscode.TextEditor | undefined) => {
       if (!editor || editor.document.languageId !== 'ignore') { return; }
       if (timeout) { clearTimeout(timeout); }
-      timeout = setTimeout(() => updateGitignoreDecorations(editor), 250);
+      timeout = setTimeout(() => updateGitignoreDecorations(editor, gitignoreLineDecoration), 250);
     };
   })();
 
