@@ -27,6 +27,15 @@ The status bar shows the current state at a glance:
 
 If `.gitignore` is modified while files are hidden, the exclude list updates automatically.
 
+### Hover Tooltips
+
+Hover over any line in your `.gitignore` file to see which files match that pattern:
+
+![Hover tooltip demo](resources/gitignored-hover-tooltip-demo.gif)
+
+- Plain-English explanations for each pattern
+- Match counts showing how many files the pattern matches
+
 ## Requirements
 
 - An open workspace folder (single or multi-root)
