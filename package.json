@@ -2,7 +2,7 @@
   "name": "git-ignored",
   "displayName": ".gitignored - Toggle .gitignore'd Files",
   "description": "Toggle visibility of .gitignore'd files in the Explorer Tab",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "publisher": "PRLabs",
   "icon": "resources/logo.png",
   "galleryBanner": {
